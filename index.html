@@ -33,6 +33,10 @@ th.sortable:hover{color:var(--tx)}
 th .arr{opacity:.4;font-size:10px;margin-left:5px}
 th.sorted{color:var(--tx)}
 th.sorted .arr{opacity:1;color:var(--acc)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal .box{background:var(--panel2);border:1px solid var(--bd);border-radius:12px;padding:18px 18px 14px;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.modal .box p{margin:0 0 16px;font-size:14px}
+.modal .row{display:flex;gap:8px;justify-content:flex-end}
 .controls .cnt{color:var(--mut);font-size:12px;margin-left:auto}
 label.chkfilter{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px}
 .addbar{background:var(--panel);border:1px dashed var(--bd);border-radius:10px;padding:10px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -115,7 +119,15 @@ let scope = "ALL"; // ALL or a tab name
 
 function load(){ try{const s=localStorage.getItem(LS); if(s) return JSON.parse(s);}catch(e){} return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
 function save(){ localStorage.setItem(LS, JSON.stringify(DB)); }
-function resetAll(){ if(confirm("Restaurar todos os dados originais da planilha? Suas alterações serão perdidas.")){ DB=JSON.parse(JSON.stringify(DEFAULT_DATA)); save(); render(); renderTotals(); } }
+function uiConfirm(msg,onYes){
+  const o=document.createElement("div"); o.className="modal";
+  o.innerHTML='<div class="box"><p>'+esc(msg)+'</p><div class="row"><button class="cancel">Cancelar</button><button class="primary ok">Confirmar</button></div></div>';
+  document.body.appendChild(o);
+  o.querySelector(".ok").onclick=()=>{ o.remove(); onYes(); };
+  o.querySelector(".cancel").onclick=()=>o.remove();
+  o.addEventListener("click",e=>{ if(e.target===o) o.remove(); });
+}
+function resetAll(){ uiConfirm("Restaurar todos os dados originais da planilha? Suas alterações serão perdidas.",()=>{ try{localStorage.removeItem(LS);}catch(e){} DB=JSON.parse(JSON.stringify(DEFAULT_DATA)); sortState={}; originVal=""; save(); render(); renderTotals(); }); }
 function exportJSON(){ const b=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download="osro_deposits.json"; a.click(); }
 
 /* ---------- EFFECT PARSER ---------- */
@@ -305,7 +317,7 @@ function render(){
   document.getElementById("globalsub").textContent=`${g} depositados de ${gt} itens`;
 }
 function toggle(i){ DB[activeTab][i].depo=!DB[activeTab][i].depo; save(); render(); renderTotals(); }
-function del(i){ if(confirm("Remover \""+DB[activeTab][i].name+"\"?")){ DB[activeTab].splice(i,1); save(); render(); renderTotals(); } }
+function del(i){ const nm=DB[activeTab][i].name; uiConfirm("Remover \""+nm+"\"?",()=>{ DB[activeTab].splice(i,1); save(); render(); renderTotals(); }); }
 
 function renderScope(){
   let h=`<button class="${scope==='ALL'?'on':''}" onclick="setScope('ALL')">Todas</button>`;
