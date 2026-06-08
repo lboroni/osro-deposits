@@ -74,6 +74,8 @@ mark{background:rgba(255,180,84,.3);color:inherit;border-radius:3px}
   <span class="sub" id="globalsub"></span>
   <span class="spacer"></span>
   <button onclick="exportJSON()">⤓ Exportar JSON</button>
+  <button onclick="document.getElementById('importfile').click()">⤒ Importar JSON</button>
+  <input type="file" id="importfile" accept="application/json,.json" style="display:none" onchange="importJSON(event)">
   <button onclick="resetAll()" class="danger" style="border:1px solid var(--bd)">Restaurar original</button>
 </header>
 <div class="wrap">
@@ -131,6 +133,25 @@ function uiConfirm(msg,onYes){
 }
 function resetAll(){ uiConfirm("Restaurar todos os dados originais da planilha? Suas alterações (checks e itens adicionados) serão apagadas e o armazenamento local será limpo.",()=>{ try{localStorage.removeItem(LS);}catch(e){} DB=JSON.parse(JSON.stringify(DEFAULT_DATA)); sortState={}; originVal=""; render(); renderTotals(); }); }
 function exportJSON(){ const b=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download="osro_deposits.json"; a.click(); }
+function importJSON(ev){
+  const f=ev.target.files&&ev.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    let obj;
+    try{ obj=JSON.parse(r.result); }catch(e){ alert("Arquivo inválido: não é um JSON válido."); ev.target.value=""; return; }
+    if(!obj||typeof obj!=="object"||Array.isArray(obj)){ alert("Formato inesperado. Use um arquivo exportado por este app."); ev.target.value=""; return; }
+    const present=TAB_ORDER.filter(t=>Array.isArray(obj[t]));
+    if(!present.length){ alert("Nenhuma aba reconhecida no arquivo (Card Deposits, Card Unlocks, Equipment, Costume)."); ev.target.value=""; return; }
+    uiConfirm("Importar dados do arquivo \""+f.name+"\"? Isso substitui o estado atual ("+present.length+" aba(s) encontradas).",()=>{
+      const nd={}; for(const t of TAB_ORDER){
+        nd[t]=Array.isArray(obj[t])? obj[t].map(it=>({depo:!!it.depo,name:String(it.name||""),effect:String(it.effect||""),...(("req"in it)?{req:it.req}:{}),...(("id"in it)?{id:it.id}:{}),...(("origin"in it)?{origin:it.origin}:{})})) : (DB[t]||[]);
+      }
+      DB=nd; sortState={}; originVal=""; save(); render(); renderTotals();
+    });
+    ev.target.value="";
+  };
+  r.readAsText(f);
+}
 
 /* ---------- EFFECT PARSER ---------- */
 const STAT_RE = /^(MAX HP|ATK\/MATK|ATK & MATK|HP\/SP|HP & SP|PERFECT DODGE|STR|AGI|VIT|INT|DEX|LUK|ATK|MATK|HP|SP|HIT|FLEE|CRITICAL|CRIT|PD|ASPD|MS|DEF|MDEF)\s*\+?\s*([+-]?\d+)\s*(%?)$/i;
