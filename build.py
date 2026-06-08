@@ -31,13 +31,19 @@ button.danger:hover{background:rgba(255,107,107,.12)}
 .controls{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
 input[type=text],input[type=number]{font:inherit;background:var(--panel);border:1px solid var(--bd);color:var(--tx);padding:7px 10px;border-radius:8px}
 input[type=text]{min-width:160px}
+select{font:inherit;background:var(--panel);border:1px solid var(--bd);color:var(--tx);padding:7px 10px;border-radius:8px;cursor:pointer}
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--tx)}
+th .arr{opacity:.4;font-size:10px;margin-left:5px}
+th.sorted{color:var(--tx)}
+th.sorted .arr{opacity:1;color:var(--acc)}
 .controls .cnt{color:var(--mut);font-size:12px;margin-left:auto}
 label.chkfilter{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px}
 .addbar{background:var(--panel);border:1px dashed var(--bd);border-radius:10px;padding:10px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .addbar .tag{color:var(--mut);font-size:12px;font-weight:600}
 table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden}
 th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--bd);font-size:13px;vertical-align:middle}
-th{color:var(--mut);font-weight:600;position:sticky;top:56px;background:var(--panel2);z-index:5}
+th{color:var(--mut);font-weight:600;background:var(--panel2)}
 tr:hover td{background:rgba(91,140,255,.06)}
 td.c{width:34px;text-align:center}
 input[type=checkbox]{width:17px;height:17px;accent-color:var(--ok);cursor:pointer}
@@ -75,7 +81,13 @@ mark{background:rgba(255,180,84,.3);color:inherit;border-radius:3px}
     <div class="tabs" id="tabs"></div>
     <div class="controls">
       <input type="text" id="search" placeholder="Buscar nome ou efeito…" oninput="render()">
-      <label class="chkfilter"><input type="checkbox" id="onlychecked" onchange="render()"> só depositados</label>
+      <select id="statusf" onchange="render()">
+        <option value="all">Status: todos</option>
+        <option value="depo">Depositados</option>
+        <option value="miss">Faltando</option>
+      </select>
+      <span id="originfwrap"></span>
+      <button id="clearf" onclick="clearFilters()">Limpar filtros</button>
       <span class="cnt" id="tabcount"></span>
     </div>
     <div class="addbar" id="addbar"></div>
@@ -223,7 +235,12 @@ function renderTabs(){
     return `<div class="tab ${t===activeTab?"active":""}" onclick="setTab('${t}')">${t}<span class="n">${c}/${arr.length}</span></div>`;
   }).join("");
 }
-function setTab(t){ activeTab=t; document.getElementById("search").value=""; render(); }
+let sortState={}; let originVal="";
+function setTab(t){ activeTab=t; originVal=""; document.getElementById("search").value=""; document.getElementById("statusf").value="all"; render(); }
+function setSort(key){ const st=sortState[activeTab]||{key:null,dir:1}; if(st.key===key){st.dir=-st.dir;} else {st.key=key; st.dir=1;} sortState[activeTab]=st; render(); }
+function setOrigin(v){ originVal=v; render(); }
+function clearFilters(){ originVal=""; sortState[activeTab]=null; document.getElementById("search").value=""; document.getElementById("statusf").value="all"; render(); }
+function sortVal(it,key){ if(key==="depo")return it.depo?1:0; if(key==="name")return it.name||""; if(key==="effect")return it.effect||""; return it[key]!=null?it[key]:""; }
 
 function renderAddbar(){
   const fields=TAB_FIELDS[activeTab];
@@ -246,14 +263,33 @@ function addItem(){
 function render(){
   renderTabs(); renderAddbar();
   const q=document.getElementById("search").value.trim().toLowerCase();
-  const only=document.getElementById("onlychecked").checked;
+  const sf=document.getElementById("statusf").value;
   const fields=TAB_FIELDS[activeTab];
   const arr=DB[activeTab]||[];
+  // origin filter dropdown (tabs that have origin)
+  const hasOrigin=fields.some(f=>f.k==="origin");
+  if(hasOrigin){
+    const vals=[...new Set(arr.map(x=>x.origin).filter(Boolean))].sort((a,b)=>(""+a).localeCompare(""+b));
+    document.getElementById("originfwrap").innerHTML='<select id="originf" onchange="setOrigin(this.value)"><option value="">Origin: todas</option>'+vals.map(v=>`<option ${v===originVal?"selected":""}>${esc(v)}</option>`).join("")+'</select>';
+  } else { document.getElementById("originfwrap").innerHTML=""; }
   let rows=arr.map((it,i)=>({it,i}));
-  if(only) rows=rows.filter(r=>r.it.depo);
+  if(sf==="depo") rows=rows.filter(r=>r.it.depo); else if(sf==="miss") rows=rows.filter(r=>!r.it.depo);
+  if(hasOrigin&&originVal) rows=rows.filter(r=>r.it.origin===originVal);
   if(q) rows=rows.filter(r=>(r.it.name+" "+r.it.effect).toLowerCase().includes(q));
-  let h=`<table><thead><tr><th class="c">✓</th><th>Nome</th><th>Efeito</th>`;
-  for(const f of fields) h+=`<th>${f.label}</th>`;
+  const st=sortState[activeTab]||{key:null,dir:1};
+  if(st.key){
+    rows.sort((A,B)=>{
+      let a=sortVal(A.it,st.key), b=sortVal(B.it,st.key);
+      const na=parseFloat(a), nb=parseFloat(b);
+      const numeric=a!=="" && b!=="" && !isNaN(na) && !isNaN(nb);
+      let r= numeric? na-nb : (""+a).localeCompare(""+b,undefined,{numeric:true,sensitivity:"base"});
+      return r*st.dir;
+    });
+  }
+  const arrow=(key)=>`<span class="arr">${st.key===key?(st.dir>0?"▲":"▼"):"↕"}</span>`;
+  const thh=(key,label,cls)=>`<th class="sortable ${cls||""} ${st.key===key?"sorted":""}" onclick="setSort('${key}')">${label}${arrow(key)}</th>`;
+  let h=`<table><thead><tr>`+thh("depo","✓","c")+thh("name","Nome")+thh("effect","Efeito");
+  for(const f of fields) h+=thh(f.k,f.label);
   h+=`<th class="c"></th></tr></thead><tbody>`;
   if(!rows.length) h+=`<tr><td colspan="${3+fields.length+1}" class="empty" style="padding:14px">Nenhum item.</td></tr>`;
   for(const {it,i} of rows){
